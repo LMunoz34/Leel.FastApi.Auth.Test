@@ -63,7 +63,7 @@
                 });
 
                 if (!response.ok) {
-                    throw new Error('Root request failed');
+                    throw new Error('Root request failed', response);
                 }
 
                 const data = await response.json();

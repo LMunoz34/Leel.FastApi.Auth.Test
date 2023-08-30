@@ -28,7 +28,7 @@ async def get_current_user(request: Request):
     except Exception as e:
         raise HTTPException(status_code=500, detail="Internal server error")
 
-def get_token(authorization: str = Header(...)):
+async def get_token(authorization: str = Header(...)):
     try:
         # Extract token from header
         request_token = authorization.split(' ')[1]
@@ -37,6 +37,13 @@ def get_token(authorization: str = Header(...)):
         return request_token
     except (IndexError, ValueError, TypeError):
         raise HTTPException(status_code=401, detail="Unauthorized")
+    
+# async def validate_token(token: str):
+#     async with httpx.AsyncClient() as client:
+#         response = await client.post("https://auth.apchh.com/verify", json={"token": token})
+#     if response.status_code != 200:
+#         raise HTTPException(status_code=401, detail="Invalid token")
+
 
 @app.post("/login")
 async def login(current_user: tuple = Depends(get_current_user)):
