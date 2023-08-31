@@ -5,6 +5,10 @@ from typing import Optional
 import base64
 from middleware.middleware import add_middleware
 from httpx import HTTPError
+import json
+from cachetools import TTLCache
+
+cache = TTLCache(maxsize=100, ttl=300)
 
 app = FastAPI()
 add_middleware(app)
@@ -13,6 +17,7 @@ class LoginDetails(BaseModel):
     username: str
     password: str
     application: Optional[str]
+
 
 async def get_current_user(request: Request):
     try:
@@ -28,21 +33,23 @@ async def get_current_user(request: Request):
     except Exception as e:
         raise HTTPException(status_code=500, detail="Internal server error")
 
-async def get_token(authorization: str = Header(...)):
+
+async def get_token(session_id: str = Header(...)):
     try:
-        # Extract token from header
-        request_token = authorization.split(' ')[1]
-        if not request_token:
+        if session_id in cache:
+            return cache[session_id]
+        if not session_id:
+            print("No token found")
             raise HTTPException(status_code=401, detail="Unauthorized")
-        return request_token
+        async with httpx.AsyncClient() as client:
+            response = await client.get("https://auth.apchh.com/verify", params={"sessionId": session_id})
+        if response.status_code != 200:
+            raise HTTPException(status_code=401, detail="Invalid sessionId")
+        token = json.loads(base64.b64decode(response.text).decode('utf-8'))
+        cache[session_id] = token
+        return token
     except (IndexError, ValueError, TypeError):
         raise HTTPException(status_code=401, detail="Unauthorized")
-    
-# async def validate_token(token: str):
-#     async with httpx.AsyncClient() as client:
-#         response = await client.post("https://auth.apchh.com/verify", json={"token": token})
-#     if response.status_code != 200:
-#         raise HTTPException(status_code=401, detail="Invalid token")
 
 
 @app.post("/login")
@@ -50,9 +57,8 @@ async def login(current_user: tuple = Depends(get_current_user)):
     return {"token": current_user[0], "decoded_token": current_user[1]}
 
 @app.get("/")
-async def root(current_token: str = Depends(get_token)):
-    decoded_token = base64.b64decode(current_token).decode('utf-8')
-    return {"token": {decoded_token}}
+async def root(session_id: str = Depends(get_token)):
+    return {"token": session_id}
 
 if __name__ == "__main__":
     import uvicorn
